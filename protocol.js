@@ -43,3 +43,42 @@ function unpackRegistered(message_buffer) {
 		lifetime: buffer.readUInt16(4),
 	}
 }
+
+
+function packFetch(service_name){
+  name_len = len(service_name);
+  msg = Buffer(5 + name_len);
+  msg.writeUInt16BE(MAGIC, 0);
+  msg.writeUInt8(sequence_number, 1);
+  msg.writeUInt8(3, 2); // command
+  // really should check that name_len < 255
+  msg.writeUInt8(name_len);
+  msg.write(service_name, 5, name_len);
+  return msg;
+}
+
+function unpackFetch(msg) {
+  if (msg.length < 5 || (msg.length - 5)%10 != 0) {
+    return null;
+  }
+  msg = {
+    magic: msg.readUInt16BE(0),
+    seq_num: msg.readUInt8(2),
+    command: msg.readUInt8(3),
+    num_entries: msg.readUInt8(4),
+    entries: []
+  };
+  for (i = 0; i < num_entries; i++) {
+    entry_offset = 5 + 10*i;
+    entry = {
+      service_addr: {
+        address: msg.readUInt32BE(entry_offset),
+        port: msg.readUInt16BE(entry_offset + 4),
+      }
+      service_data: readUInt32BE(entry_offset + 6)
+    };
+    msg.entries.push(entry);
+  }
+  return msg;
+}
+
