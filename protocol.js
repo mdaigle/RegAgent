@@ -1,7 +1,26 @@
+// Protocol constants
 const MAGIC = 0xC461;
+const REGISTER = 1;
+const REGISTERED = 2;
+const FETCH = 3;
+const FETCHRESPONSE = 4;
+const UNREGISTER = 5;
+const PROBE = 6;
+const ACK = 7;
+
 sequence_number = 0; // move later
 
-function unpackMessage(message_buffer) {
+function packMainFields(buffer, seq_num, command) {
+    buffer.writeUInt16BE(MAGIC, 0);
+    buffer.writeUInt8(seq_num, 2);
+    buffer.writeUInt8(command, 3);
+    return buffer;
+}
+
+// Unpacks the critical fields from a message (magic number, sequence number,
+// and command). Use this for all message to verify them. Use exclusively this
+// for unpacking PROBE and ACK messages.
+function unpackMainFields(message_buffer) {
     if (message_buffer.length < 4) { return null; }
 
     return {
@@ -13,13 +32,11 @@ function unpackMessage(message_buffer) {
 
 // Packs a new message with the requisite fields for a REGISTER.
 // service_addr: string, ip address of remote service
-// service_data:
 function packRegister(service_addr, service_data, service_name) {
-    name_len = service_name.length;
     msg = Buffer(15 + name_len);
-    msg.writeUInt16BE(MAGIC, 0);
-    msg.writeUInt8(sequence_number, 2);
-    msg.writeUInt8(1, 3);
+    packMainFields(msg, seq_num, REGISTER);
+
+    name_len = service_name.length;
     //TODO: fix address writing
     msg.writeUInt32BE(service_addr.address, 4);
     msg.writeUInt16BE(service_addr.port, 8);
@@ -46,9 +63,8 @@ function unpackRegistered(message_buffer) {
 
 function packUnregister(service_addr) {
     var buffer = new Buffer(10);
-    buffer.writeUInt16BE(MAGIC, 0);
-    buffer.writeUInt8(sequence_number, 2)
-    buffer.writeUInt8(5, 3);
+    packMainFields(buffer, seq_num, UNREGISTER);
+
     buffer.writeUInt32BE(service_addr.address, 4);
     buffer.writeUInt16BE(service_addr.port, 8);
     return buffer;
@@ -58,9 +74,8 @@ function packUnregister(service_addr) {
 function packFetch(service_name){
     name_len = len(service_name);
     msg = Buffer(5 + name_len);
-    msg.writeUInt16BE(MAGIC, 0);
-    msg.writeUInt8(sequence_number, 1);
-    msg.writeUInt8(3, 2); // command
+    packMainFields(buffer, seq_num, FETCH);
+
     // really should check that name_len < 255
     msg.writeUInt8(name_len);
     msg.write(service_name, 5, name_len);
