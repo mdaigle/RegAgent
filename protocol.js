@@ -44,6 +44,16 @@ function unpackRegistered(message_buffer) {
 	}
 }
 
+function packUnregister(service_addr) {
+	var buffer = new Buffer(10);
+	buffer.writeUInt16BE(MAGIC, 0);
+	buffer.writeUInt8(sequence_number, 2)
+	buffer.writeUInt8(5, 3);
+	buffer.writeUInt32BE(service_addr.address, 4);
+	buffer.writeUInt16BE(service_addr.port, 8);
+	return buffer;
+}
+
 
 function packFetch(service_name){
   name_len = len(service_name);
