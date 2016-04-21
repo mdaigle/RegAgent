@@ -8,19 +8,21 @@ const UNREGISTER = 5;
 const PROBE = 6;
 const ACK = 7;
 
-sequence_number = 0; // move later
+// Packs the main message fields (magic, sequence number, and command) in the
+// given buffer.
+exports.packMainFields = function(seq_num, command, message_buffer) {
+    message_buffer = message_buffer || new Buffer(4);
 
-function packMainFields(buffer, seq_num, command) {
-    buffer.writeUInt16BE(MAGIC, 0);
-    buffer.writeUInt8(seq_num, 2);
-    buffer.writeUInt8(command, 3);
-    return buffer;
+    message_buffer.writeUInt16BE(MAGIC, 0);
+    message_buffer.writeUInt8(seq_num, 2);
+    message_buffer.writeUInt8(command, 3);
+
+    return message_buffer;
 }
 
-// Unpacks the critical fields from a message (magic number, sequence number,
-// and command). Use this for all message to verify them. Use exclusively this
-// for unpacking PROBE and ACK messages.
-function unpackMainFields(message_buffer) {
+// Unpacks the main fields from a message (magic number, sequence number,
+// and command).
+exports.unpackMainFields = function(message_buffer) {
     if (message_buffer.length < 4) { return null; }
 
     return {
@@ -32,77 +34,93 @@ function unpackMainFields(message_buffer) {
 
 // Packs a new message with the requisite fields for a REGISTER.
 // service_addr: string, ip address of remote service
-function packRegister(service_addr, service_data, service_name) {
-    msg = Buffer(15 + name_len);
-    packMainFields(msg, seq_num, REGISTER);
-
+exports.packRegister = function(seq_num, service_addr, service_data, service_name) {
+    var message_buffer = Buffer(15 + name_len);
     name_len = service_name.length;
+
+    packMainFields(seq_num, REGISTER, message_buffer);
     //TODO: fix address writing
-    msg.writeUInt32BE(service_addr.address, 4);
-    msg.writeUInt16BE(service_addr.port, 8);
-    msg.writeUInt32BE(service_data, 10);
-    msg.writeUInt8(name_len, 14);
-    for (i = 0; i < name_len; i++){
-        msg.writeUInt8(service_name.charAt(i), 15 + i);
-    }
-    return msg;
+    message_buffer.writeUInt32BE(service_addr.address, 4);
+    message_buffer.writeUInt16BE(service_addr.port, 8);
+    message_buffer.writeUInt32BE(service_data, 10);
+    message_buffer.writeUInt8(name_len, 14);
+    message_buffer.write(service_name, 15);
+
+    return message_buffer;
 }
 
-// Unpacks field from a REGISTERED message. Assumes that message_buffer has already been checked for validity.
-function unpackRegistered(message_buffer) {
+// Unpacks field from a REGISTERED message. Assumes that message_buffer has
+// already been checked for validity.
+exports.unpackRegistered = function(message_buffer) {
     //Verify that message is of the expected length.
     if (message_buffer.length != 6) { return null; }
 
-    return {
-        magic: buffer.readUInt16(0),
-        seq_num: buffer.readUInt8(2),
-        command: buffer.readUInt8(3),
-        lifetime: buffer.readUInt16(4),
-    }
+    var message = unpackMainFields(message_buffer);
+    message.lifetime = buffer.readUInt16BE(4);
+
+    return message;
 }
 
-function packUnregister(service_addr) {
-    var buffer = new Buffer(10);
-    packMainFields(buffer, seq_num, UNREGISTER);
+// Packs the fields for an UNREGISTER message into a buffer and returns this
+// buffer. Service addr parameter specifies the address and port that should be
+// unregistered.
+exports.packUnregister = function(seq_num, service_addr) {
+    var message_buffer = new Buffer(10);
 
-    buffer.writeUInt32BE(service_addr.address, 4);
-    buffer.writeUInt16BE(service_addr.port, 8);
-    return buffer;
+    packMainFields(seq_num, UNREGISTER, message_buffer);
+    message_buffer.writeUInt32BE(service_addr.address, 4);
+    message_buffer.writeUInt16BE(service_addr.port, 8);
+
+    return message_buffer;
 }
 
+// Packs the fields for a FETCH message into a buffer and returns this buffer.
+// Service name parameter specifies describes the local service.
+exports.packFetch = function(seq_num, service_name){
+    var name_len = len(service_name);
+    var message_buffer = Buffer(5 + name_len);
 
-function packFetch(service_name){
-    name_len = len(service_name);
-    msg = Buffer(5 + name_len);
-    packMainFields(buffer, seq_num, FETCH);
-
+    packMainFields(seq_num, FETCH, message_buffer);
     // really should check that name_len < 255
-    msg.writeUInt8(name_len);
-    msg.write(service_name, 5, name_len);
-    return msg;
+    message_buffer.writeUInt8(name_len);
+    message_buffer.write(service_name, 5, name_len);
+
+    return message_buffer;
 }
 
-function unpackFetch(msg) {
-    if (msg.length < 5 || (msg.length - 5)%10 != 0) {
+// Unpacks the fields from a FETCHRESPONSE message.
+exports.unpackFetchResponse = function(message_buffer) {
+    if (message_buffer.length < 5 || (message_buffer.length - 5) % 10 != 0) {
         return null;
     }
-    msg = {
-        magic: msg.readUInt16BE(0),
-        seq_num: msg.readUInt8(2),
-        command: msg.readUInt8(3),
-        num_entries: msg.readUInt8(4),
-        entries: []
-    };
+
+    var msg = unpackMainFields(message_buffer);
+    msg.num_entries = msg.readUInt8(4);
+    msg.entries = [];
+
     for (i = 0; i < num_entries; i++) {
-        entry_offset = 5 + 10*i;
-        entry = {
+        var entry_offset = 5 + (10 * i);
+
+        var entry = {
             service_addr: {
                 address: msg.readUInt32BE(entry_offset),
                 port: msg.readUInt16BE(entry_offset + 4),
             }
             service_data: readUInt32BE(entry_offset + 6)
         };
+
         msg.entries.push(entry);
     }
+
     return msg;
+}
+
+// Packs the fields for a PROBE message into a buffer and returns this buffer.
+exports.packProbe = function(seq_num) {
+    return packMainFields(seq_num, PROBE);
+}
+
+// Packs the fields for an ACK message into a buffer and returns this buffer.
+exports.packAck = function(seq_num) {
+    return packMainFields(seq_num, ACK);
 }
