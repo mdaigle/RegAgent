@@ -1,16 +1,16 @@
 // Protocol constants
-const MAGIC = 0xC461;
-const REGISTER = 1;
-const REGISTERED = 2;
-const FETCH = 3;
+const MAGIC         = 0xC461;
+const REGISTER      = 1;
+const REGISTERED    = 2;
+const FETCH         = 3;
 const FETCHRESPONSE = 4;
-const UNREGISTER = 5;
-const PROBE = 6;
-const ACK = 7;
+const UNREGISTER    = 5;
+const PROBE         = 6;
+const ACK           = 7;
 
 // Packs the main message fields (magic, sequence number, and command) in the
 // given buffer.
-exports.packMainFields = function(seq_num, command, message_buffer) {
+exports.packMainFields = packMainFields = function(seq_num, command, message_buffer) {
     message_buffer = message_buffer || new Buffer(4);
 
     message_buffer.writeUInt16BE(MAGIC, 0);
@@ -22,7 +22,7 @@ exports.packMainFields = function(seq_num, command, message_buffer) {
 
 // Unpacks the main fields from a message (magic number, sequence number,
 // and command).
-exports.unpackMainFields = function(message_buffer) {
+exports.unpackMainFields = unpackMainFields = function(message_buffer) {
     if (message_buffer.length < 4) { return null; }
 
     return {
@@ -103,10 +103,10 @@ exports.unpackFetchResponse = function(message_buffer) {
 
         var entry = {
             service_addr: {
-                address: msg.readUInt32BE(entry_offset),
-                port: msg.readUInt16BE(entry_offset + 4),
-            }
-            service_data: readUInt32BE(entry_offset + 6)
+                address: message_buffer.readUInt32BE(entry_offset),
+                port: message_buffer.readUInt16BE(entry_offset + 4),
+            },
+            service_data: message_buffer.readUInt32BE(entry_offset + 6)
         };
 
         msg.entries.push(entry);
@@ -124,3 +124,19 @@ exports.packProbe = function(seq_num) {
 exports.packAck = function(seq_num) {
     return packMainFields(seq_num, ACK);
 }
+
+// Add constant exports.
+exports = {
+    // Constants
+    MAGIC: MAGIC,
+    REGISTER: REGISTER,
+    REGISTERED: REGISTERED,
+    FETCH: FETCH,
+    FETCHRESPONSE: FETCHRESPONSE,
+    UNREGISTER: UNREGISTER,
+    PROBE: PROBE,
+    ACK: ACK,
+}
+
+// IMPORTANT! - keeps the protocol from being changed (accidentally or intentionally).
+Object.freeze(exports);
