@@ -65,13 +65,13 @@ function protocolError(){
   process.exit(1);
 }
 
-msg_timeout = 1
+msg_timeout = 1;
 last_msg_sent = -1;
 
 // Message Handlers //
 function register_callback(msg, rinfo){
   if (last_msg_sent != protocol.REGISTER){
-    protocolError();    
+    protocolError();
   }
   data = protocol.unpackRegistered(msg);
   setTimeout(send_register, data.timeout-msg_timeout);
@@ -96,7 +96,7 @@ function ack_callback(msg, rinfo){
     console.log("Probe successful.");
   }else if(last_msg_sent == protocol.UNREGISTER){
     last_msg_sent = -1;
-    console.log("Unregister sucessful."); 
+    console.log("Unregister sucessful.");
   }else{
     protocolError();
   }
