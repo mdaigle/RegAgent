@@ -54,52 +54,94 @@ socket_in.on('listening', () => {
     }
 });
 
+// service_port and service_addr are globals
+function send(msg, socket, callback){
+  socket.send(msg, service_port, service_addr, callback);
+}
+
+function protocolError(){
+  console.log("Protocol Error");
+  socket_out.close();
+  socket_in.close();
+  process.exit(1);
+}
+
+msg_timeout = 1
+last_msg_sent = -1;
+
 // Message Handlers //
-function register_callback(msg, rinfo):
+function register_callback(msg, rinfo){
+  if (last_msg_sent != protocol.REGISTER){
+    protocolError();    
+  }
   data = protocol.unpackRegistered(msg);
+  setTimeout(send_register, data.timeout-msg_timeout);
+  console.log("Register successful.");
+}
 
-
-function fetch_callback(msg, rinfo):
+function fetch_callback(msg, rinfo){
+  if (last_msg_sent != protocol.FETCH) {
+    protocolError();
+  }
   data = protocol.unpackFetch(msg);
+  // do stuff
+}
 
-function probe_callback(msg, rinfo):
-  send_ack();
+function probe_callback(msg, rinfo){
+  send_ack(socket_in);
+}
 
-function ack_callback(msg, rinfo):
+function ack_callback(msg, rinfo){
+  if (last_msg_sent == protocol.PROBE){
+    last_msg_sent = -1;
+    console.log("Probe successful.");
+  }else if(last_msg_sent == protocol.UNREGISTER){
+    last_msg_sent = -1;
+    console.log("Unregister sucessful."); 
+  }else{
+    protocolError();
+  }
+}
 
 // Command Handlers //
-function send_register():
+function send_register(){
   msg = protocol.packRegister(service_addr, service_data, service_name);
-  send(msg, function(){
+  send(msg, socket_out, function(){
+    last_msg_sent = protocol.REGISTER;
   });
+}
 
-function send_fetch():
+function send_fetch(){
   msg = protocol.packFetch(service_name);
-  send(msg, function(){
+  send(msg, socket_out, function(){
+    last_msg_sent = protocol.FETCH;
   });
+}
 
-function send_unregister():
+function send_unregister(){
   msg = protocol.packUnregister(service_addr);
-  send(msg, function(){
+  send(msg, socket_out, function(){
+    last_msg_sent = protocol.UNREGISTER;
   });
+}
 
-function send_probe():
+function send_probe(){
   msg = packProbe(); // NEED TO MAKE THIS FUNCTION
-  send(msg, function(){
+  send(msg, socket_out, function(){
+    last_msg_sent = protocol.PROBE;
   });
+}
 
-function send_ack():
+function send_ack(socket){
   msg = packAck();
   send(msg, function(){
 
   });
+}
 
 rl.on('line', (line) => {
 
 });
-
-
-
 
 // function arguments:
 //    msg
