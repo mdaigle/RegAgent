@@ -1,4 +1,8 @@
 const protocol = require('./protocol');
+
+// Standard timeout for a response to a request.
+const msg_timeout = 1;
+
 // Client States
 // const BEGIN = -1
 // const REGISTER_WAIT = 0
@@ -9,7 +13,13 @@ const protocol = require('./protocol');
 const args = process.argv.slice(1);
 assert(args.length == 1);
 
-var service_port = args[0];
+const service_port = args[0];
+var seq_num = 0;
+
+// Holds mappings from port number to an object holding {service name, service
+// data, and a timer id}. The timer id specifies a timer object used for
+// reregistering the service.
+var port_map = new Map();
 
 const readline = require('readline');
 const rl = readline.createInterface({
@@ -24,19 +34,21 @@ const socket_out = dgram.createSocket('udp4');
 const socket_in = dgram.createSocket('udp4');
 
 socket_out.on('error', (err) => {
-    console.log('Socket error');
-    socket_out.close();
-    socket_in.close();
-    process.exit(1);
+    sock_err();
 });
 
 socket_in.on('error', (err) => {
+    sock_err();
+});
+
+function sock_err() {
     console.log('Socket error');
     socket_out.close();
     socket_in.close();
     process.exit(1);
-});
+}
 
+// Only used here so that we know when both sockets are listening.
 var num_listening = 0;
 
 socket_out.on('listening', () => {
@@ -65,7 +77,6 @@ function protocolError(){
   process.exit(1);
 }
 
-msg_timeout = 1;
 last_msg_sent = -1;
 
 // Message Handlers //
@@ -103,22 +114,22 @@ function ack_callback(msg, rinfo){
 }
 
 // Command Handlers //
-function send_register(){
-  msg = protocol.packRegister(service_addr, service_data, service_name);
+function send_register(seq_num++, port, service_data, service_name){
+  msg = protocol.packRegister(ip, port, service_data, service_name);
   send(msg, socket_out, function(){
     last_msg_sent = protocol.REGISTER;
   });
 }
 
 function send_fetch(){
-  msg = protocol.packFetch(service_name);
+  msg = protocol.packFetch(seq_num++, service_name);
   send(msg, socket_out, function(){
     last_msg_sent = protocol.FETCH;
   });
 }
 
-function send_unregister(){
-  msg = protocol.packUnregister(service_addr);
+function send_unregister(port){
+  msg = protocol.packUnregister(seq_num++, ip, port);
   send(msg, socket_out, function(){
     last_msg_sent = protocol.UNREGISTER;
   });
@@ -139,17 +150,19 @@ function send_ack(socket){
 }
 
 rl.on('line', (line) => {
+    rl.pause();
+    console.log("Processing Request...");
     var arguments = line.split(" ");
     switch (arguments[0]) {
         case "r":
-            var portnum = parseInt(arguments[1]);
-            var data = arguments[2];
+            var port = parseInt(arguments[1]);
+            var service_data = arguments[2];
             var service_name = arguments[3];
-            send_register(/*ip, port, data, name*/);
+            send_register(port, service_data, service_name);
             break;
         case "u":
             var portnum = parseInt(arguments[1]);
-            send_unregister();
+            send_unregister(port);
             break;
         case "f":
             var service_name = arguments[1];
@@ -162,7 +175,8 @@ rl.on('line', (line) => {
             rl.close();
             break;
         default:
-            console.log("Unrecognized command.");
+            console.log("Unrecognized Command");
+            rl.resume();
             break;
     }
 });
@@ -198,16 +212,17 @@ function check_sequence(seq_num){
   return seq_num > protocol.sequence_number;
 }
 
-socket.on('message', (msg, rinfo) => {
-  header = unpackMessage(msg);
+socket_out.on('message', (buf, rinfo) => {
+  var header = unpackMainFields(buf);
   if (header != null && header.magic == protocol.MAGIC){
     if (check_sequence(header.seq_num) && check_received_command(header.command)){
       // valid packet
       MSG_HANDLER[command](msg, rinfo);
+      rl.resume();
     }
   }
-
 });
+
 
 
 // IO and IO EVENT BINDINGS
