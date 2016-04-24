@@ -6,11 +6,10 @@ const protocol = require('./protocol');
 // const FETCH_WAIT = 2
 // const ACK_WAIT = 3
 
-const args = process.argv.slice(2);
-assert(args.length == 2);
+const args = process.argv.slice(1);
+assert(args.length == 1);
 
-var service_name = args[0];
-var service_port = args[1];
+var service_port = args[0];
 
 const readline = require('readline');
 const rl = readline.createInterface({
@@ -95,7 +94,38 @@ function send_ack():
   });
 
 rl.on('line', (line) => {
+    var arguments = line.split(" ");
+    switch (arguments[0]) {
+        case "r":
+            var portnum = parseInt(arguments[1]);
+            var data = arguments[2];
+            var service_name = arguments[3];
+            send_register(/*ip, port, data, name*/);
+            break;
+        case "u":
+            var portnum = parseInt(arguments[1]);
+            send_unregister();
+            break;
+        case "f":
+            var service_name = arguments[1];
+            send_fetch();
+            break;
+        case "p":
+            send_probe();
+            break;
+        case "q":
+            rl.close();
+            break;
+        default:
+            console.log("Unrecognized command.");
+            break;
+    }
+});
 
+rl.on('close', () => {
+    socket_in.close();
+    socket_out.close();
+    process.exit(1);
 });
 
 
