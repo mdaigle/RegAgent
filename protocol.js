@@ -33,8 +33,7 @@ exports.unpackMainFields = unpackMainFields = function(message_buffer) {
 }
 
 // Packs a new message with the requisite fields for a REGISTER.
-// service_addr: string, ip address of remote service
-exports.packRegister = function(seq_num, service_addr, service_data, service_name) {
+exports.packRegister = function(seq_num, ip, port, service_data, service_name) {
     var message_buffer = Buffer(15 + name_len);
     name_len = service_name.length;
 
@@ -62,9 +61,8 @@ exports.unpackRegistered = function(message_buffer) {
 }
 
 // Packs the fields for an UNREGISTER message into a buffer and returns this
-// buffer. Service addr parameter specifies the address and port that should be
-// unregistered.
-exports.packUnregister = function(seq_num, service_addr) {
+// buffer.
+exports.packUnregister = function(seq_num, ip, port) {
     var message_buffer = new Buffer(10);
 
     packMainFields(seq_num, UNREGISTER, message_buffer);
