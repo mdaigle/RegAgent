@@ -34,13 +34,18 @@ exports.unpackMainFields = unpackMainFields = function(message_buffer) {
 
 // Packs a new message with the requisite fields for a REGISTER.
 exports.packRegister = function(seq_num, ip, port, service_data, service_name) {
-    var message_buffer = Buffer(15 + name_len);
+    var message_buffer = Buffer(15 + service_name.length);
     name_len = service_name.length;
 
     packMainFields(seq_num, REGISTER, message_buffer);
-    //TODO: fix address writing
-    message_buffer.writeUInt32BE(service_addr.address, 4);
-    message_buffer.writeUInt16BE(service_addr.port, 8);
+
+    // Write address bytes individually because ip comes in as a string.
+    var components = ip.split('.');
+    for (var i = 0; i < components.length; i++) {
+        message_buffer.writeUInt8(parseInt(components[i]), 4 + i);
+    }
+
+    message_buffer.writeUInt16BE(port, 8);
     message_buffer.writeUInt32BE(service_data, 10);
     message_buffer.writeUInt8(name_len, 14);
     message_buffer.write(service_name, 15);

@@ -14,19 +14,19 @@ assert(args.length == 2);
 const socket_out = dgram.createSocket('udp4');
 const socket_in = dgram.createSocket('udp4');
 
-const service_hostname = args[0];
-const service_port = args[1];
+const reg_service_hostname = args[0];
+const reg_service_port = args[1];
 
 const local_address = getThisHostIP();
 
-var service_address;
-dns.lookup(service_hostname, (err, address, family) => {
+var reg_service_address;
+dns.lookup(reg_service_hostname, (err, address, family) => {
     if (err) {
         console.log("error resolving service hostname");
         process.exit(0);
     }
 
-    addr = address;
+    reg_service_address = address;
 
     console.log('regServerIP:', address);
     console.log('thisHostIP:', local_address);
@@ -42,93 +42,95 @@ var seq_num = 0;
 var last_msg_sent = -1;
 
 const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
 });
 rl.setPrompt('Enter r(egister), u(nregister), f(etch), p(robe), or q(uit): ');
 rl.pause();
 
-// service_port and service_addr are globals
-function send(msg, socket, callback){
-  socket.send(msg, service_port, service_addr, callback);
-}
-
 function protocolError(){
-  console.log("Protocol Error");
-  socket_out.close();
-  socket_in.close();
-  process.exit(1);
+    console.log("Protocol Error");
+    socket_out.close();
+    socket_in.close();
+    process.exit(1);
 }
 
 // Message Handlers //
 function register_callback(msg, rinfo){
-  if (last_msg_sent != protocol.REGISTER){
-    protocolError();
-  }
-  data = protocol.unpackRegistered(msg);
-  setTimeout(send_register, data.timeout-msg_timeout);
-  console.log("Register successful.");
+    if (last_msg_sent != protocol.REGISTER){
+        protocolError();
+    }
+    data = protocol.unpackRegistered(msg);
+    setTimeout(send_register, data.timeout-msg_timeout);
+    console.log("Register successful.");
 }
 
 function fetch_callback(msg, rinfo){
-  if (last_msg_sent != protocol.FETCH) {
-    protocolError();
-  }
-  data = protocol.unpackFetch(msg);
+    if (last_msg_sent != protocol.FETCH) {
+      protocolError();
+    }
+    data = protocol.unpackFetch(msg);
   // do stuff
 }
 
 function probe_callback(msg, rinfo){
-  send_ack(socket_in);
+    send_ack(socket_in);
 }
 
 function ack_callback(msg, rinfo){
-  if (last_msg_sent == protocol.PROBE){
-    last_msg_sent = -1;
-    console.log("Probe successful.");
-  }else if(last_msg_sent == protocol.UNREGISTER){
-    last_msg_sent = -1;
-    console.log("Unregister sucessful.");
-  }else{
-    protocolError();
-  }
+    if (last_msg_sent == protocol.PROBE){
+        last_msg_sent = -1;
+        console.log("Probe successful.");
+    }else if(last_msg_sent == protocol.UNREGISTER){
+        last_msg_sent = -1;
+        console.log("Unregister sucessful.");
+    }else{
+        protocolError();
+    }
+}
+
+function send(msg, socket, callback){
+    console.log(msg);
+    socket.send(msg, reg_service_port, reg_service_address, callback);
 }
 
 // Command Handlers //
 function send_register(port, service_data, service_name){
-  msg = protocol.packRegister(seq_num++, ip, port, service_data, service_name);
-  send(msg, socket_out, function(){
-    last_msg_sent = protocol.REGISTER;
-  });
+    msg = protocol.packRegister(seq_num++, local_address, port, service_data, service_name);
+    send(msg, socket_out, function(err){
+        console.log("sent message");
+        console.log(err);
+        last_msg_sent = protocol.REGISTER;
+    });
 }
 
 function send_fetch(){
-  msg = protocol.packFetch(seq_num++, service_name);
-  send(msg, socket_out, function(){
-    last_msg_sent = protocol.FETCH;
-  });
+    msg = protocol.packFetch(seq_num++, service_name);
+    send(msg, socket_out, function(){
+        last_msg_sent = protocol.FETCH;
+    });
 }
 
 function send_unregister(port){
-  msg = protocol.packUnregister(seq_num++, ip, port);
-  send(msg, socket_out, function(){
-    last_msg_sent = protocol.UNREGISTER;
-  });
+    msg = protocol.packUnregister(seq_num++, ip, port);
+    send(msg, socket_out, function(){
+        last_msg_sent = protocol.UNREGISTER;
+    });
 }
 
 function send_probe(){
-  msg = packProbe(seq_num++);
-  send(msg, socket_out, function(){
+    msg = packProbe(seq_num++);
+    send(msg, socket_out, function(){
     last_msg_sent = protocol.PROBE;
-  });
+    });
 }
 
 function send_ack(socket){
-  msg = packAck();
-  send(msg, function(){
+    msg = packAck();
+    send(msg, function(){
 
-  });
+    });
 }
 
 // IO and IO EVENT BINDINGS
@@ -138,6 +140,12 @@ rl.on('line', (line) => {
     var arguments = line.split(" ");
     switch (arguments[0]) {
         case "r":
+            if (arguments.length != 4) {
+                console.log("Register command format is: r port service_data service_name");
+                rl.prompt();
+                rl.resume();
+                break;
+            }
             var port = parseInt(arguments[1]);
             var service_data = arguments[2];
             var service_name = arguments[3];
@@ -216,27 +224,28 @@ function sock_err(err) {
 }
 
 socket_out.on('message', (buf, rinfo) => {
-  var header = unpackMainFields(buf);
-  if (header != null && header.magic == protocol.MAGIC){
+    console.log('got a message');
+    var header = unpackMainFields(buf);
+    if (header != null && header.magic == protocol.MAGIC){
     if (sequence_num_ok(header.seq_num) && command_ok(header.command)){
       // valid packet
       MSG_HANDLER[command](msg, rinfo);
       rl.prompt();
       rl.resume();
     }
-  }
+    }
 });
 
 function command_ok(command){
-  if (command == 2 || command == 4 || command == 6 || command == 7){
-    return true;
-  }
-  return false;
+    if (command == 2 || command == 4 || command == 6 || command == 7){
+        return true;
+    }
+    return false;
 }
 
 // This may need to be changed to match spec behavior for invalid sequence
 function sequence_ok(seq_num){
-  return seq_num > protocol.sequence_number;
+    return seq_num > protocol.sequence_number;
 }
 
 function getThisHostIP() {
