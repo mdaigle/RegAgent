@@ -1,69 +1,53 @@
+const assert = require('assert');
+const dgram = require('dgram');
+const dns = require('dns');
+const os = require('os');
 const protocol = require('./protocol');
+const readline = require('readline');
 
 // Standard timeout for a response to a request.
 const msg_timeout = 1;
 
-// Client States
-// const BEGIN = -1
-// const REGISTER_WAIT = 0
-// const IDLE = 1
-// const FETCH_WAIT = 2
-// const ACK_WAIT = 3
+const args = process.argv.slice(2);
+assert(args.length == 2);
 
-const args = process.argv.slice(1);
-assert(args.length == 1);
+const socket_out = dgram.createSocket('udp4');
+const socket_in = dgram.createSocket('udp4');
 
-const service_port = args[0];
-var seq_num = 0;
+const service_hostname = args[0];
+const service_port = args[1];
+
+const local_address = getThisHostIP();
+
+var service_address;
+dns.lookup(service_hostname, (err, address, family) => {
+    if (err) {
+        console.log("error resolving service hostname");
+        process.exit(0);
+    }
+
+    addr = address;
+
+    console.log('regServerIP:', address);
+    console.log('thisHostIP:', local_address);
+
+    bind_sockets();
+});
 
 // Holds mappings from port number to an object holding {service name, service
 // data, and a timer id}. The timer id specifies a timer object used for
 // reregistering the service.
 var port_map = new Map();
+var seq_num = 0;
+var last_msg_sent = -1;
 
-const readline = require('readline');
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
   terminal: false
 });
+rl.setPrompt('Enter r(egister), u(nregister), f(etch), p(robe), or q(uit): ');
 rl.pause();
-
-const dgram = require('dgram');
-const socket_out = dgram.createSocket('udp4');
-const socket_in = dgram.createSocket('udp4');
-
-socket_out.on('error', (err) => {
-    sock_err();
-});
-
-socket_in.on('error', (err) => {
-    sock_err();
-});
-
-function sock_err() {
-    console.log('Socket error');
-    socket_out.close();
-    socket_in.close();
-    process.exit(1);
-}
-
-// Only used here so that we know when both sockets are listening.
-var num_listening = 0;
-
-socket_out.on('listening', () => {
-    num_listening++;
-    if (num_listening == 2) {
-        rl.resume();
-    }
-});
-
-socket_in.on('listening', () => {
-    num_listening++;
-    if (num_listening == 2) {
-        rl.resume();
-    }
-});
 
 // service_port and service_addr are globals
 function send(msg, socket, callback){
@@ -76,8 +60,6 @@ function protocolError(){
   socket_in.close();
   process.exit(1);
 }
-
-last_msg_sent = -1;
 
 // Message Handlers //
 function register_callback(msg, rinfo){
@@ -114,8 +96,8 @@ function ack_callback(msg, rinfo){
 }
 
 // Command Handlers //
-function send_register(seq_num++, port, service_data, service_name){
-  msg = protocol.packRegister(ip, port, service_data, service_name);
+function send_register(port, service_data, service_name){
+  msg = protocol.packRegister(seq_num++, ip, port, service_data, service_name);
   send(msg, socket_out, function(){
     last_msg_sent = protocol.REGISTER;
   });
@@ -136,7 +118,7 @@ function send_unregister(port){
 }
 
 function send_probe(){
-  msg = packProbe(); // NEED TO MAKE THIS FUNCTION
+  msg = packProbe(seq_num++);
   send(msg, socket_out, function(){
     last_msg_sent = protocol.PROBE;
   });
@@ -149,9 +131,10 @@ function send_ack(socket){
   });
 }
 
+// IO and IO EVENT BINDINGS
+// -------------------------------------------------------------------------- //
 rl.on('line', (line) => {
     rl.pause();
-    console.log("Processing Request...");
     var arguments = line.split(" ");
     switch (arguments[0]) {
         case "r":
@@ -190,17 +173,61 @@ rl.on('close', () => {
 // function arguments:
 //    msg
 //    rinfo
-MSG_HANDLER = {"2": register_callback, "4": fetch_callback, "6", probe_callback, "7": ack_callback};
+MSG_HANDLER = {"2": register_callback, "4": fetch_callback, "6": probe_callback, "7": ack_callback};
 
 // function arguments:
 //    socket
 //
 CMD_HANDLER = {"1": send_register, "3": send_fetch, "5": send_unregister, "6": send_probe, "7": send_ack};
 
-const dgram = require('dgram');
-const socket = dgram.createSocket('udp4');
+// Only used here so that we know when both sockets are listening.
+var num_listening = 0;
 
-function check_received_command(command){
+socket_out.on('listening', () => {
+    num_listening++;
+    if (num_listening == 2) {
+        rl.prompt();
+        rl.resume();
+    }
+});
+
+socket_in.on('listening', () => {
+    num_listening++;
+    if (num_listening == 2) {
+        rl.prompt();
+        rl.resume();
+    }
+});
+
+socket_out.on('error', (err) => {
+    sock_err(err);
+});
+
+socket_in.on('error', (err) => {
+    sock_err(err);
+});
+
+function sock_err(err) {
+    console.log('Socket error');
+    console.log(err);
+    socket_out.close();
+    socket_in.close();
+    process.exit(1);
+}
+
+socket_out.on('message', (buf, rinfo) => {
+  var header = unpackMainFields(buf);
+  if (header != null && header.magic == protocol.MAGIC){
+    if (sequence_num_ok(header.seq_num) && command_ok(header.command)){
+      // valid packet
+      MSG_HANDLER[command](msg, rinfo);
+      rl.prompt();
+      rl.resume();
+    }
+  }
+});
+
+function command_ok(command){
   if (command == 2 || command == 4 || command == 6 || command == 7){
     return true;
   }
@@ -208,26 +235,26 @@ function check_received_command(command){
 }
 
 // This may need to be changed to match spec behavior for invalid sequence
-function check_sequence(seq_num){
+function sequence_ok(seq_num){
   return seq_num > protocol.sequence_number;
 }
 
-socket_out.on('message', (buf, rinfo) => {
-  var header = unpackMainFields(buf);
-  if (header != null && header.magic == protocol.MAGIC){
-    if (check_sequence(header.seq_num) && check_received_command(header.command)){
-      // valid packet
-      MSG_HANDLER[command](msg, rinfo);
-      rl.resume();
+function getThisHostIP() {
+    var interfaces = os.networkInterfaces();
+    var addresses = [];
+    for (var i in interfaces) {
+        for (var j in interfaces[i]) {
+            var address = interfaces[i][j];
+            if (address.family === 'IPv4' && !address.internal) {
+                addresses.push(address.address);
+            }
+        }
     }
-  }
-});
+    return addresses[0];
+}
 
-
-
-// IO and IO EVENT BINDINGS
-// -------------------------------------------------------------------------- //
-
-var rand_port = random(2000, 5000);
-socket_out.bind(rand_port);
-socket_in.bind(rand_port + 1);
+function bind_sockets() {
+    var rand_port = (Math.random() * 3000) + 2000;
+    socket_out.bind(rand_port);
+    socket_in.bind(rand_port + 1);
+}
