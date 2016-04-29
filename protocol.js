@@ -1,12 +1,12 @@
 // Protocol constants
-const MAGIC         = 0xC461;
-const REGISTER      = 1;
-const REGISTERED    = 2;
-const FETCH         = 3;
-const FETCHRESPONSE = 4;
-const UNREGISTER    = 5;
-const PROBE         = 6;
-const ACK           = 7;
+exports.MAGIC = MAGIC         = 0xC461;
+exports.REGISTER = REGISTER      = 1;
+exports.REGISTERED = REGISTERED    = 2;
+exports.FETCH = FETCH         = 3;
+exports.FETCHRESPONSE = FETCHRESPONSE = 4;
+exports.UNREGISTER = UNREGISTER    = 5;
+exports.PROBE = PROBE         = 6;
+exports.ACK = ACK           = 7;
 
 // Packs the main message fields (magic, sequence number, and command) in the
 // given buffer.
@@ -26,7 +26,7 @@ exports.unpackMainFields = unpackMainFields = function(message_buffer) {
     if (message_buffer.length < 4) { return null; }
 
     return {
-        magic: message_buffer.readUInt16(0),
+        magic: message_buffer.readUInt16BE(0),
         seq_num: message_buffer.readUInt8(2),
         command: message_buffer.readUInt8(3),
     }
@@ -57,10 +57,12 @@ exports.packRegister = function(seq_num, ip, port, service_data, service_name) {
 // already been checked for validity.
 exports.unpackRegistered = function(message_buffer) {
     //Verify that message is of the expected length.
+    console.log(message_buffer.length);
+    console.log(message_buffer);
     if (message_buffer.length != 6) { return null; }
 
     var message = unpackMainFields(message_buffer);
-    message.lifetime = buffer.readUInt16BE(4);
+    message.lifetime = message_buffer.readUInt16BE(4);
 
     return message;
 }
@@ -71,8 +73,11 @@ exports.packUnregister = function(seq_num, ip, port) {
     var message_buffer = new Buffer(10);
 
     packMainFields(seq_num, UNREGISTER, message_buffer);
-    message_buffer.writeUInt32BE(service_addr.address, 4);
-    message_buffer.writeUInt16BE(service_addr.port, 8);
+    var components = ip.split('.');
+    for (var i = 0; i < components.length; i++) {
+        message_buffer.writeUInt8(parseInt(components[i]), 4 + i);
+    }
+    message_buffer.writeUInt16BE(port, 8);
 
     return message_buffer;
 }
@@ -80,12 +85,12 @@ exports.packUnregister = function(seq_num, ip, port) {
 // Packs the fields for a FETCH message into a buffer and returns this buffer.
 // Service name parameter specifies describes the local service.
 exports.packFetch = function(seq_num, service_name){
-    var name_len = len(service_name);
+    var name_len = service_name.length;
     var message_buffer = Buffer(5 + name_len);
 
     packMainFields(seq_num, FETCH, message_buffer);
     // really should check that name_len < 255
-    message_buffer.writeUInt8(name_len);
+    message_buffer.writeUInt8(name_len, 4);
     message_buffer.write(service_name, 5, name_len);
 
     return message_buffer;
@@ -98,10 +103,10 @@ exports.unpackFetchResponse = function(message_buffer) {
     }
 
     var msg = unpackMainFields(message_buffer);
-    msg.num_entries = msg.readUInt8(4);
+    msg.num_entries = message_buffer.readUInt8(4);
     msg.entries = [];
 
-    for (i = 0; i < num_entries; i++) {
+    for (i = 0; i < msg.num_entries; i++) {
         var entry_offset = 5 + (10 * i);
 
         var entry = {
@@ -128,18 +133,6 @@ exports.packAck = function(seq_num) {
     return packMainFields(seq_num, ACK);
 }
 
-// Add constant exports.
-exports = {
-    // Constants
-    MAGIC: MAGIC,
-    REGISTER: REGISTER,
-    REGISTERED: REGISTERED,
-    FETCH: FETCH,
-    FETCHRESPONSE: FETCHRESPONSE,
-    UNREGISTER: UNREGISTER,
-    PROBE: PROBE,
-    ACK: ACK,
-}
 
 // IMPORTANT! - keeps the protocol from being changed (accidentally or intentionally).
 Object.freeze(exports);
