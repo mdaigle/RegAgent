@@ -91,7 +91,8 @@ function msgTimeout(errMsg){
             'timeout' in port_map[port] &&
             port_map[port].timeout != null){
                 clearTimeout(port_map[port].timeout);
-            }
+        }
+        last_register_msg = null;    
     }
     last_msg_sent = -1;
     processQueue();
