@@ -1,3 +1,10 @@
+// TODO:
+// - standardize indentations to 2 or 4 spaces
+// - BUG: If you register a service with the same name, port etc twice there is
+// no output and the user must press Enter again at which point "Unrecognized
+// Command" is displayed and the user is prompted for a new command
+// - Remove all auxilary output
+
 const assert = require('assert');
 const dgram = require('dgram');
 const dns = require('dns');
@@ -71,6 +78,7 @@ function processQueue(messageAction){
 function protocolError(location){
     console.log("Protocol Error");
     console.log("Thrown by", location);
+    clearTimeout(last_msg_timeout); // added
     socket_out.close();
     socket_in.close();
     process.exit(1);
@@ -78,7 +86,7 @@ function protocolError(location){
 
 function msgTimeout(errMsg){
   console.log(errMsg);
-  last_msg_timeout = {};
+  last_msg_timeout = null; // shouldnt this be = 0? or = null?, changed from {}
   if (last_register_msg) {
       port = last_register_msg['service_port'];
       if (port in port_map &&
@@ -105,7 +113,7 @@ function process_registered(msg, rinfo){
     }
 
     //console.log("clearing response timeout");
-    clearTimeout(last_msg_sent);
+    clearTimeout(last_msg_timeout); // changed from last_msg_sent
 
     data = protocol.unpackRegistered(msg);
     if (data == null) { protocolError("null data in process_registered");}
@@ -202,7 +210,9 @@ function send_register(port, service_data, service_name){
     // console.log(++num_registers_sent);
     // console.log("Seq_num is", seq_num);
     errMsg = "Register unsuccessful";
-    clearTimeout(last_msg_timeout);
+    clearTimeout(last_msg_timeout); // do we need to clear this here?
+    // Technically we should never enter this function when last_msg_timeout !=
+    // null or 0
     last_msg_timeout = setTimeout(function(){msgTimeout(errMsg);}, msg_timeout);
 }
 
