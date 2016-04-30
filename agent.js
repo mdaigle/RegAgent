@@ -361,12 +361,10 @@ socket_out.on('message', (buf, rinfo) => {
 });
 
 socket_in.on('message', (buf, rinfo) => {
-    console.log('got a message on socket_in');
     header = unpackMainFields(buf);
     if (header != null && header.magic == protocol.MAGIC) {
       if (header.command == protocol.PROBE) {
           MSG_HANDLER[header.command](buf, rinfo);
-        // processQueue(); // ? yes  or no ?
       }
     }
 });
