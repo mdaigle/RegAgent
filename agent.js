@@ -125,7 +125,7 @@ function process_registered(msg, rinfo){
     var service_data = last_register_msg['service_data'];
     var service_name = last_register_msg['service_name'];
 
-    var reregister_time = (.75) * data.lifetime;
+    var reregister_time = (.5) * data.lifetime;
     port_map[port]['timeout'] = setTimeout(function(){
       //called in re-register timeout, on user input and on-message-response
         processQueue(function(){
