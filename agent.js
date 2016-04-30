@@ -52,6 +52,20 @@ const rl = readline.createInterface({
 rl.setPrompt('Enter r(egister), u(nregister), f(etch), p(robe), or q(uit): ');
 rl.pause();
 
+messageQueue = [];
+function processQueue(messageAction){
+  rl.pause(); // ?
+  if (messageAction != undefined) {
+    messageQueue.push(messageAction);
+  }
+  if (messageQueue.length > 0) {
+    nextAction = messageQueue.shift();
+    if (nextAction != undefined) {
+      nextAction();
+    }
+  }
+}
+
 function protocolError(){
     console.log("Protocol Error");
     socket_out.close();
@@ -64,6 +78,7 @@ function msgTimeout(errMsg){
   last_msg_timeout = {};
   last_register_msg = null;
   last_msg_sent = -1;
+  processQueue();
   rl.prompt();
   rl.resume();
 }
@@ -99,7 +114,8 @@ function register_callback(msg, rinfo){
       //  first();
       //}
       //called in re-register timeout, on user input and on-message-response
-      send_register(port, service_data, service_name);}, msg_timeout);
+      processQueue(function(){
+        send_register(port, service_data, service_name)});}, msg_timeout);
     last_register_msg = {};
     console.log("Register successful.");
 }
@@ -144,18 +160,18 @@ function send_register(port, service_data, service_name){
     last_register_msg = {"service_port": port, "service_name": service_name, "service_data": service_data, "timeout": null};
     msg = protocol.packRegister(seq_num++, local_address, port, service_data, service_name);
     send(msg, socket_out, function(err){
-        console.log("sent message");
-        console.log(err);
-        last_msg_sent = protocol.REGISTER;
+      console.log("sent message");
+      console.log(err);
+      last_msg_sent = protocol.REGISTER;
     });
     errMsg = "Register unsuccessful";
-    last_msg_timeout = setTimeout((errMsg) => msgTimeout, msg_timeout);
+    last_msg_timeout = setTimeout(function(){msgTimeout(errMsg);}, msg_timeout);
 }
 
 function send_fetch(service_name){
     msg = protocol.packFetch(seq_num++, service_name);
     send(msg, socket_out, function() {
-        last_msg_sent = protocol.FETCH;
+      last_msg_sent = protocol.FETCH;
     });
     errMsg = "Fetch unsuccessful.";
     last_msg_timeout = setTimeout((errMsg) => msgTimeout, msg_timeout);
@@ -164,7 +180,7 @@ function send_fetch(service_name){
 function send_unregister(port){
     msg = protocol.packUnregister(seq_num++, local_address, port);
     send(msg, socket_out, function(){
-        last_msg_sent = protocol.UNREGISTER;
+      last_msg_sent = protocol.UNREGISTER;
     });
     delete port_map[port];
     errMsg = "Unregister unsuccessful.";
@@ -172,17 +188,18 @@ function send_unregister(port){
 }
 
 function send_probe(){
+    console.log("sending probe");
     msg = protocol.packProbe(seq_num++);
     send(msg, socket_out, function(){
       last_msg_sent = protocol.PROBE;
     });
-    errMsg = "Unregsietr unsuccessful.";
+    errMsg = "Probe unsuccessful.";
     last_msg_timeout = setTimeout((errMsg) => msgTimeout, msg_timeout);
 }
 
 function send_ack(socket){
     msg = protocol.packAck();
-    send(msg, function(){
+    send(msg, socket, function(){
     });
 }
 
@@ -202,7 +219,9 @@ rl.on('line', (line) => {
             var port = parseInt(arguments[1]);
             var service_data = arguments[2];
             var service_name = arguments[3];
-            send_register(port, service_data, service_name);
+            processQueue(function(){
+              send_register(port, service_data, service_name);
+            });
             break;
         case "u":
             if (arguments.length != 2) {
@@ -212,7 +231,9 @@ rl.on('line', (line) => {
               break;
             }
             var portnum = parseInt(arguments[1]);
-            send_unregister(portnum);
+            processQueue(function(){
+              send_unregister(portnum);
+            });
             break;
         case "f":
             if (arguments.length != 2) {
@@ -222,10 +243,15 @@ rl.on('line', (line) => {
               break;
             }
             var service_name = arguments[1];
-            send_fetch(service_name);
+            processQueue(function(){
+              send_fetch(service_name);
+            });
             break;
         case "p":
-            send_probe();
+            // Note: Not really necessary to wrap this
+            processQueue(function(){
+              send_probe();
+            });
             break;
         case "q":
             rl.close();
@@ -257,6 +283,7 @@ CMD_HANDLER = {"1": send_register, "3": send_fetch, "5": send_unregister, "6": s
 var num_listening = 0;
 
 socket_out.on('listening', () => {
+    console.log('socket_out listening');
     num_listening++;
     if (num_listening == 2) {
         rl.prompt();
@@ -291,18 +318,31 @@ function sock_err(err) {
 socket_out.on('message', (buf, rinfo) => {
     console.log('got a message');
     var header = unpackMainFields(buf);
-    console.log(protocol.MAGIC);
-    console.log(header);
-    console.log(buf);
+    //console.log(protocol.MAGIC);
+    //console.log(header);
+    //console.log(buf);
     if (header != null && header.magic == protocol.MAGIC){
       console.log("valid header"); 
     if (command_ok(header.command)){//sequence_num_ok(header.seq_num) && command_ok(header.command)){
       console.log('valid packet');
       // valid packet
       MSG_HANDLER[header.command](buf, rinfo);
+      processQueue();
       rl.prompt();
       rl.resume();
     }
+    }
+});
+
+socket_in.on('message', (buf, rinfo) => {
+    console.log('got a message on socket_in');
+    header = unpackMainFields(buf);
+    if (header != null && header.magic == protocol.MAGIC) {
+      console.log("valid header");
+      if (header.command == protocol.PROBE) {
+        MSG_HANDLER[header.command](buf, rinfo);
+        // processQueue(); // ? yes  or no ?
+      }
     }
 });
 
