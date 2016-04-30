@@ -45,8 +45,8 @@ dns.lookup(reg_service_hostname, (err, address, family) => {
 // data, and a timer id}. The timer id specifies a timer object used for
 // reregistering the service.
 // var port_map = new Map();
-port_map = {};
-last_register_msg = {};
+var port_map = {};
+var last_register_msg = {};
 var last_msg_timeout = null;
 var seq_num = 0;
 var last_msg_sent = -1;
@@ -63,16 +63,16 @@ rl.pause();
 messageQueue = [];
 function processQueue(messageAction){
     //console.log("in processQueue");
-  rl.pause(); // ?
-  if (messageAction != undefined) {
-    messageQueue.push(messageAction);
-  }
-  if (messageQueue.length > 0) {
-    nextAction = messageQueue.shift();
-    if (nextAction != undefined) {
-      nextAction();
+    rl.pause(); // ?
+    if (messageAction != undefined) {
+        messageQueue.push(messageAction);
     }
-  }
+    if (messageQueue.length > 0) {
+        nextAction = messageQueue.shift();
+        if (nextAction != undefined) {
+            nextAction();
+        }
+    }
 }
 
 function protocolError(location){
@@ -85,23 +85,23 @@ function protocolError(location){
 }
 
 function msgTimeout(errMsg){
-  console.log(errMsg);
-  last_msg_timeout = null; // shouldnt this be = 0? or = null?, changed from {}
-  if (last_register_msg) {
-      port = last_register_msg['service_port'];
-      if (port in port_map &&
-          'timeout' in port_map[port] &&
-          port_map[port].timeout != null){
-          //console.log("clearing timeout");
-          console.log("clearing timeout for", port);
-        clearTimeout(port_map[port].timeout);
-      }
+    console.log(errMsg);
+    last_msg_timeout = null; // shouldnt this be = 0? or = null?, changed from {}
+    if (last_register_msg) {
+        port = last_register_msg['service_port'];
+        if (port in port_map &&
+            'timeout' in port_map[port] &&
+            port_map[port].timeout != null){
+                //console.log("clearing timeout");
+                console.log("clearing timeout for", port);
+                clearTimeout(port_map[port].timeout);
+            }
       //last_register_msg = null;
-  }
-  last_msg_sent = -1;
-  processQueue();
-  rl.prompt();
-  rl.resume();
+    }
+    last_msg_sent = -1;
+    processQueue();
+    rl.prompt();
+    rl.resume();
 }
 
 // Message Handlers //
@@ -128,7 +128,7 @@ function process_registered(msg, rinfo){
     }
     else if ('timeout' in port_map[port] && port_map[port].timeout != null){
         //console.log("clearing timeout");
-      clearTimeout(port_map[port].timeout);
+        clearTimeout(port_map[port].timeout);
     }
 
     port_map[port] = last_register_msg;
@@ -205,21 +205,22 @@ function send_register(port, service_data, service_name){
     send(msg, socket_out, function(err){
       //console.log("sent message");
       //console.log(err);
-      last_msg_sent = protocol.REGISTER;
+        last_msg_sent = protocol.REGISTER;
     });
     // console.log(++num_registers_sent);
     // console.log("Seq_num is", seq_num);
     errMsg = "Register unsuccessful";
-    clearTimeout(last_msg_timeout); // do we need to clear this here?
-    // Technically we should never enter this function when last_msg_timeout !=
-    // null or 0
+
+    // We must clear the timeout before we reset it otherwise we will lose the
+    // id. Setting the timer again does not overwrite the old timeout.
+    clearTimeout(last_msg_timeout);
     last_msg_timeout = setTimeout(function(){msgTimeout(errMsg);}, msg_timeout);
 }
 
 function send_fetch(service_name){
     msg = protocol.packFetch(get_sequence_num(), service_name);
     send(msg, socket_out, function() {
-      last_msg_sent = protocol.FETCH;
+        last_msg_sent = protocol.FETCH;
     });
     errMsg = "Fetch unsuccessful.";
     clearTimeout(last_msg_timeout);
@@ -234,7 +235,7 @@ function send_unregister(port){
 
     msg = protocol.packUnregister(get_sequence_num(), local_address, port);
     send(msg, socket_out, function(){
-      last_msg_sent = protocol.UNREGISTER;
+        last_msg_sent = protocol.UNREGISTER;
     });
     errMsg = "Unregister unsuccessful.";
     clearTimeout(last_msg_timeout);
@@ -245,7 +246,7 @@ function send_probe(){
     console.log("sending probe");
     msg = protocol.packProbe(get_sequence_num());
     send(msg, socket_out, function(){
-      last_msg_sent = protocol.PROBE;
+        last_msg_sent = protocol.PROBE;
     });
     errMsg = "Probe unsuccessful.";
     clearTimeout(last_msg_timeout);
@@ -275,7 +276,7 @@ rl.on('line', (line) => {
             var service_data = arguments[2];
             var service_name = arguments[3];
             processQueue(function(){
-              send_register(port, service_data, service_name);
+                send_register(port, service_data, service_name);
             });
             break;
         case "u":
@@ -287,25 +288,25 @@ rl.on('line', (line) => {
             }
             var portnum = parseInt(arguments[1]);
             processQueue(function(){
-              send_unregister(portnum);
+                send_unregister(portnum);
             });
             break;
         case "f":
             if (arguments.length != 2) {
-              console.log("Fetch command format is: f service_name");
-              rl.prompt();
-              rl.resume();
-              break;
+                console.log("Fetch command format is: f service_name");
+                rl.prompt();
+                rl.resume();
+                break;
             }
             var service_name = arguments[1];
             processQueue(function(){
-              send_fetch(service_name);
+                send_fetch(service_name);
             });
             break;
         case "p":
             // Note: Not really necessary to wrap this
             processQueue(function(){
-              send_probe();
+                send_probe();
             });
             break;
         case "q":
@@ -393,7 +394,7 @@ socket_in.on('message', (buf, rinfo) => {
     if (header != null && header.magic == protocol.MAGIC) {
       //console.log("valid header");
       if (header.command == protocol.PROBE) {
-        MSG_HANDLER[header.command](buf, rinfo);
+          MSG_HANDLER[header.command](buf, rinfo);
         // processQueue(); // ? yes  or no ?
       }
     }
