@@ -57,8 +57,8 @@ exports.packRegister = function(seq_num, ip, port, service_data, service_name) {
 // already been checked for validity.
 exports.unpackRegistered = function(message_buffer) {
     //Verify that message is of the expected length.
-    console.log(message_buffer.length);
-    console.log(message_buffer);
+    // console.log(message_buffer.length);
+    // console.log(message_buffer);
     if (message_buffer.length != 6) { return null; }
 
     var message = unpackMainFields(message_buffer);

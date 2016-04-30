@@ -112,7 +112,9 @@ function process_registered(msg, rinfo){
 
     port = last_register_msg.service_port;
 
-    if (!(port in port_map)) {
+    if (!(port in port_map) ||
+        port_map[port]['service_data'] != last_register_msg['service_data'] ||
+        port_map[port]['service_name'] != last_register_msg['service_name']) {
         console.log("Register successful.");
         rl.prompt();
     }
@@ -191,20 +193,21 @@ function send_register(port, service_data, service_name){
         console.log("sending register");
     }
     last_register_msg = {"service_port": port, "service_name": service_name, "service_data": service_data, "timeout": null};
-    msg = protocol.packRegister(seq_num++, local_address, port, service_data, service_name);
+    msg = protocol.packRegister(get_sequence_num(), local_address, port, service_data, service_name);
     send(msg, socket_out, function(err){
       //console.log("sent message");
       //console.log(err);
       last_msg_sent = protocol.REGISTER;
     });
-    console.log(++num_registers_sent);
+    // console.log(++num_registers_sent);
+    // console.log("Seq_num is", seq_num);
     errMsg = "Register unsuccessful";
     clearTimeout(last_msg_timeout);
     last_msg_timeout = setTimeout(function(){msgTimeout(errMsg);}, msg_timeout);
 }
 
 function send_fetch(service_name){
-    msg = protocol.packFetch(seq_num++, service_name);
+    msg = protocol.packFetch(get_sequence_num(), service_name);
     send(msg, socket_out, function() {
       last_msg_sent = protocol.FETCH;
     });
@@ -214,11 +217,15 @@ function send_fetch(service_name){
 }
 
 function send_unregister(port){
-    msg = protocol.packUnregister(seq_num++, local_address, port);
+    if (port in port_map) {
+        clearTimeout(port_map[port]['timeout']);
+    }
+    delete port_map[port];
+
+    msg = protocol.packUnregister(get_sequence_num(), local_address, port);
     send(msg, socket_out, function(){
       last_msg_sent = protocol.UNREGISTER;
     });
-    delete port_map[port];
     errMsg = "Unregister unsuccessful.";
     clearTimeout(last_msg_timeout);
     last_msg_timeout = setTimeout((errMsg) => msgTimeout, msg_timeout);
@@ -226,7 +233,7 @@ function send_unregister(port){
 
 function send_probe(){
     console.log("sending probe");
-    msg = protocol.packProbe(seq_num++);
+    msg = protocol.packProbe(get_sequence_num());
     send(msg, socket_out, function(){
       last_msg_sent = protocol.PROBE;
     });
@@ -363,7 +370,6 @@ socket_out.on('message', (buf, rinfo) => {
     if (command_ok(header.command) && sequence_num_ok(header.seq_num)){
       //console.log('valid packet');
       // valid packet
-      seq_num++;
       MSG_HANDLER[header.command](buf, rinfo);
       processQueue();
       rl.resume();
@@ -395,7 +401,20 @@ function command_ok(command){
 // This may need to be changed to match spec behavior for invalid sequence
 // Checks that the given sequence number matches the expected sequence number.
 function sequence_num_ok(received_seq_num){
+    if (received_seq_num == 255 && seq_num == 0) {
+        return true;
+    }
     return received_seq_num == (seq_num - 1);
+}
+
+function get_sequence_num() {
+    var result = seq_num;
+    seq_num++;
+    // Wrap if we exceed 255
+    if (seq_num > 255) {
+        seq_num = 0;
+    }
+    return result;
 }
 
 // Returns the IPv4 address of this machine.
