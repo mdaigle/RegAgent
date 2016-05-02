@@ -250,7 +250,7 @@ rl.on('line', (line) => {
     var arguments = line.split(" ");
     switch (arguments[0]) {
         case "r":
-            if (arguments.length != 4) {
+            if (arguments.length != 4 || parseInt(arguments[1]) == NaN) {
                 console.log("Register command format is: r port service_data service_name");
                 rl.prompt();
                 rl.resume();
@@ -264,7 +264,7 @@ rl.on('line', (line) => {
             });
             break;
         case "u":
-            if (arguments.length != 2) {
+            if (arguments.length != 2 || parseInt(arguments[1]) == NaN) {
               console.log("Unregister command format is: u service_port");
               rl.prompt();
               rl.resume();
