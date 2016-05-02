@@ -82,8 +82,11 @@ function protocolError(location){
     process.exit(1);
 }
 
-function msgTimeout(errMsg){
-    console.log(errMsg);
+function msgTimeout(errMsg, verbose){
+    if (typeof verbose == "undefined") {verbose = true;}
+    if (verbose) {
+        console.log(errMsg);
+    }
     last_msg_timeout = null;
     if (last_register_msg) {
         port = last_register_msg['service_port'];
@@ -92,7 +95,7 @@ function msgTimeout(errMsg){
             port_map[port].timeout != null){
                 clearTimeout(port_map[port].timeout);
         }
-        last_register_msg = null;    
+        last_register_msg = null;
     }
     last_msg_sent = -1;
     processQueue();
@@ -174,6 +177,10 @@ var num_registers_sent = 0;
 function send_register(port, service_data, service_name, explicit_call){
     if (typeof explicit_call == "undefined") { explicit_call = false; }
 
+    if (port in port_map) {
+        clearTimeout(port_map[port]["timeout"]);
+    }
+
     last_register_msg = {   "service_port": port,
                             "service_name": service_name,
                             "service_data": service_data,
@@ -189,7 +196,7 @@ function send_register(port, service_data, service_name, explicit_call){
     // id. Setting the timer again does not overwrite the old timeout.
     clearTimeout(last_msg_timeout);
     errMsg = "Register unsuccessful";
-    last_msg_timeout = setTimeout(function(){msgTimeout(errMsg);}, msg_timeout);
+    last_msg_timeout = setTimeout(function(){msgTimeout(errMsg, explicit_call);}, msg_timeout);
 }
 
 function send_fetch(service_name){
