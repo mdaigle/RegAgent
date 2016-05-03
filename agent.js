@@ -13,7 +13,7 @@ const protocol = require('./protocol');
 const readline = require('readline');
 
 // Standard timeout for a response to a request.
-const msg_timeout = 5000;
+const msg_timeout = 1000;
 
 const args = process.argv.slice(2);
 assert(args.length == 2);
@@ -51,12 +51,12 @@ var last_msg_timeout = null;
 var seq_num = 0;
 var last_msg_sent = -1;
 
+var shouldPrompt = false;
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: false
 });
-var shouldPrompt = true;
 rl.setPrompt('Enter r(egister), u(nregister), f(etch), p(robe), or q(uit): ');
 rl.pause();
 
@@ -71,6 +71,12 @@ function processQueue(messageAction){
         if (nextAction != undefined) {
             nextAction();
         }
+    } else {
+        if (shouldPrompt) {
+            rl.prompt();
+            shouldPrompt = false;
+        }
+        rl.resume();
     }
 }
 
@@ -83,10 +89,15 @@ function protocolError(location){
 }
 
 function msgTimeout(errMsg, verbose){
+    if (last_msg_sent == -1) {
+        return;
+    }
+
     if (typeof verbose == "undefined") {verbose = true;}
     if (verbose) {
         console.log(errMsg);
     }
+
     last_msg_timeout = null;
     if (last_register_msg) {
         port = last_register_msg['service_port'];
@@ -99,8 +110,6 @@ function msgTimeout(errMsg, verbose){
     }
     last_msg_sent = -1;
     processQueue();
-    rl.prompt();
-    rl.resume();
 }
 
 // Message Handlers //
@@ -118,7 +127,6 @@ function process_registered(msg, rinfo){
 
     if (last_register_msg['explicit_call']) {
         console.log("Register successful.");
-        rl.prompt();
     }
     else if ('timeout' in port_map[port] && port_map[port].timeout != null){
         clearTimeout(port_map[port].timeout);
@@ -133,9 +141,10 @@ function process_registered(msg, rinfo){
       //called in re-register timeout, on user input and on-message-response
         processQueue(function(){
             send_register(port, service_data, service_name)
-        });
+        }, false);
     }, reregister_time);
     last_register_msg = {};
+    processQueue();
 }
 
 function process_fetchresponse(msg, rinfo){
@@ -146,7 +155,7 @@ function process_fetchresponse(msg, rinfo){
     data = protocol.unpackFetchResponse(msg);
     if (data == null) {protocolError("null data in process_fetchresponse");}
     console.log(data.entries);
-    rl.prompt();
+    processQueue();
 }
 
 function process_probe(msg, rinfo){
@@ -165,7 +174,7 @@ function process_ack(msg, rinfo){
     }else{
         protocolError("process_ack");
     }
-    rl.prompt();
+    processQueue();
 }
 
 function send(msg, socket, callback){
@@ -246,6 +255,7 @@ function send_ack(socket){
 // IO and IO EVENT BINDINGS
 // -------------------------------------------------------------------------- //
 rl.on('line', (line) => {
+    shouldPrompt = true;
     rl.pause();
     var arguments = line.split(" ");
     switch (arguments[0]) {
@@ -253,6 +263,7 @@ rl.on('line', (line) => {
             if (arguments.length != 4 || parseInt(arguments[1]) == NaN) {
                 console.log("Register command format is: r port service_data service_name");
                 rl.prompt();
+                shouldPrompt = false;
                 rl.resume();
                 break;
             }
@@ -267,6 +278,7 @@ rl.on('line', (line) => {
             if (arguments.length != 2 || parseInt(arguments[1]) == NaN) {
               console.log("Unregister command format is: u service_port");
               rl.prompt();
+              shouldPrompt = false;
               rl.resume();
               break;
             }
@@ -279,6 +291,7 @@ rl.on('line', (line) => {
             if (arguments.length != 2) {
                 console.log("Fetch command format is: f service_name");
                 rl.prompt();
+                shouldPrompt = false;
                 rl.resume();
                 break;
             }
@@ -299,6 +312,7 @@ rl.on('line', (line) => {
         default:
             console.log("Unrecognized Command");
             rl.prompt();
+            shouldPrompt = false;
             rl.resume();
             break;
     }
@@ -322,6 +336,7 @@ socket_out.on('listening', () => {
     num_listening++;
     if (num_listening == 2) {
         rl.prompt();
+        shouldPrompt = false;
         rl.resume();
     }
 });
@@ -330,6 +345,7 @@ socket_in.on('listening', () => {
     num_listening++;
     if (num_listening == 2) {
         rl.prompt();
+        shouldPrompt = false;
         rl.resume();
     }
 });
@@ -362,8 +378,8 @@ socket_out.on('message', (buf, rinfo) => {
     if (command_ok(header.command) && sequence_num_ok(header.seq_num)){
       // valid packet
       MSG_HANDLER[header.command](buf, rinfo);
+      last_msg_sent = -1;
       processQueue();
-      rl.resume();
     }
     }
 });
